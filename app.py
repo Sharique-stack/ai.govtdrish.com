@@ -6,61 +6,43 @@ import io
 from streamlit_mic_recorder import mic_recorder
 
 # ==========================================
-# 1. PAGE CONFIGURATION & STYLING
+# 1. PAGE CONFIGURATION
 # ==========================================
-st.set_page_config(
-    page_title="Govt Drish AI",
-    page_icon="🇮🇳",
-    layout="wide"
-)
+st.set_page_config(page_title="Govt Drish AI Lab", page_icon="🇮🇳", layout="wide")
 
-# Custom CSS for a clean, App-like feel
-st.markdown("""
-    <style>
-    /* Hide Streamlit Branding */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* Better Tab Styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        background-color: #f0f2f6;
-        border-radius: 5px;
-        padding: 0px 20px;
-        font-weight: 600;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #e6f3ff;
-        border-bottom: 3px solid #0066cc;
-        color: #0066cc;
-    }
-    
-    /* Chat Message Styling */
-    .stChatMessage {
-        padding: 1rem;
-        border-radius: 10px;
-        margin-bottom: 10px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# HIDE STREAMLIT BRANDING
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
 
 # ==========================================
-# 2. API & LOGIC SETUP
+# 2. API & AUDIO SETUP
 # ==========================================
 try:
-    GENAI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=GENAI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Fetch API Key from Secrets
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
+    
+    # Auto-select the best Flash model
+    try:
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        flash_model = next((m for m in available_models if 'flash' in m.lower()), "models/gemini-1.5-flash")
+        model = genai.GenerativeModel(flash_model)
+    except Exception as e:
+        st.error(f"Model Error: {e}")
+        model = genai.GenerativeModel("models/gemini-pro") # Fallback
+
 except Exception as e:
-    st.error("⚠️ API Key Missing. Please check Streamlit Secrets.")
+    st.error("⚠️ API Key Missing! Please set GEMINI_API_KEY in Streamlit Secrets.")
     st.stop()
 
 def text_to_speech(text):
-    """Converts text to audio bytes (Hindi accent used for Hinglish)"""
+    """Generates audio bytes (Hindi accent for Hinglish)"""
     try:
         tts = gTTS(text=text, lang='hi', slow=False)
         fp = io.BytesIO()
@@ -69,149 +51,188 @@ def text_to_speech(text):
     except:
         return None
 
-# Initialize Chat History if empty
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
 # ==========================================
-# 3. HEADER & CONTROLS
+# 3. SIDEBAR (THE "CLUTTERED" BRANDING)
 # ==========================================
-col_title, col_toggle = st.columns([6, 2])
-
-with col_title:
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/9446/9446261.png", width=80)
     st.title("🇮🇳 Govt Drish AI")
-
-with col_toggle:
-    st.write("") # Spacer
-    # The Magic Switch
+    st.markdown("---")
+    
+    # THE JEETU BHAIYA TOGGLE (Added Here)
+    st.subheader("⚙️ AI Personality")
     jeetu_mode = st.toggle("🎙️ Jeetu Bhaiya Mode", value=False)
+    
+    if jeetu_mode:
+        st.success("✅ **Jeetu Mode ON**\n(Hinglish + Voice + Motivation)")
+    else:
+        st.info("ℹ️ **Drishya Mode ON**\n(Professional English/Hindi)")
+        
+    st.markdown("---")
+    st.info("💡 **Marketing Hook:**\nAll outputs below are designed to funnel users to the **₹49/month Test Series**.")
+    st.markdown("---")
+    st.write("© 2026 Govt Drish Tech Labs")
 
 # ==========================================
 # 4. SYSTEM PROMPTS (THE BRAIN)
 # ==========================================
-
-# PROMPT 1: DRISHYA (The Professional)
-drishya_core = """
-ROLE: You are Drishya, a professional AI Career Counselor for Indian government exams (UPSC, SSC, NEET).
-TONE: Professional, Wise, Encouraging.
-LANGUAGE RULES:
-1. If the user asks in English -> Reply in Professional English.
-2. If the user asks in Hindi -> Reply in Pure, Formal Hindi (Devanagari).
-GOAL: Provide specific, actionable advice. Avoid fluff.
-"""
-
-# PROMPT 2: JEETU BHAIYA (The Mentor)
-jeetu_core = """
-ROLE: You are 'Jeetu Bhaiya', the famous coaching mentor.
-TONE: "Bade Bhaiya" (Big Brother). Emotional, strict but loving.
-LANGUAGE: Hinglish (Hindi + English mix).
-STYLE: Use words like 'Arre beta', 'Bhai', 'Samjha?', 'Fod denge'.
-GOAL: Connect emotionally. If the user is stressed, motivate them. If lazy, scold them.
-"""
-
-# Select the active personality
-active_prompt = jeetu_core if jeetu_mode else drishya_core
+# Base Instructions based on Mode
+if jeetu_mode:
+    persona_instruction = """
+    ROLE: You are 'Jeetu Bhaiya', the famous mentor.
+    TONE: Emotional, "Bade Bhaiya", Strict but Loving.
+    LANGUAGE: Hinglish (Hindi + English mix).
+    STYLE: Use words like 'Arre beta', 'Tension mat le', 'Fod denge'.
+    """
+else:
+    persona_instruction = """
+    ROLE: You are 'Drishya', a professional expert career counselor.
+    TONE: Formal, Analytical, Encouraging.
+    LANGUAGE: English (default) or Pure Hindi if asked.
+    """
 
 # ==========================================
-# 5. MAIN TABS (THE TOOLS)
+# 5. MAIN INTERFACE
 # ==========================================
-tab1, tab2, tab3, tab4 = st.tabs(["🕵️ Drishya Chat", "🗓️ Sarthi Planner", "🔥 Chanakya Roast", "🧠 Smriti Memory"])
+st.title("🚀 Govt Drish: The AI Exam Companion")
+st.markdown("Your personal AI team for **Selection Strategy**, **Planning**, **Practice**, and **Memory**.")
 
-# --- TAB 1: THE MAIN CHAT ---
+# TABS FOR THE 4 TOOLS
+tab1, tab2, tab3, tab4 = st.tabs(["🕵️ Drishya (Counselor)", "🗓️ Sarthi (Planner)", "🔥 Chanakya (Quiz)", "🧠 Smriti (Memory)"])
+
+# ==========================================
+# TOOL 1: DRISHYA - CAREER COUNSELOR
+# ==========================================
 with tab1:
-    # 1. Display Chat History
-    for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-
-    st.markdown("---")
-
-    # 2. Input Area (Mic + Text Side-by-Side)
+    st.header("Drishya: Find Your Perfect Exam Match")
+    st.write("Confused about eligibility? Let AI analyze your profile across 1670+ exams.")
+    
+    # HYBRID INPUT (Mic + Text)
     c1, c2 = st.columns([1, 8])
-    
     with c1:
-        # Mic Button
-        audio_data = mic_recorder(start_prompt="🎤", stop_prompt="⏹️", key='recorder')
-    
+        audio_in = mic_recorder(start_prompt="🎤", stop_prompt="⏹️", key='mic1')
     with c2:
-        # Text Input
-        user_text = st.chat_input("Ask about your exam strategy...")
-
-    # 3. Process Input
-    user_query = None
+        if audio_in: st.caption("🎤 Voice detected. Please verify your details below.")
     
-    # Check for Voice
-    if audio_data:
-        # Note: Without OpenAI Whisper API, we can't transact speech-to-text accurately yet.
-        # This acts as the placeholder for the UI UX you requested.
-        st.toast("🎤 Voice received! (Speech-to-Text module pending)")
-        st.info("ℹ️ Voice Input detected. Please type your query for now (Whisper API needed for transcription).")
+    col1, col2 = st.columns(2)
+    with col1:
+        age = st.number_input("Your Age", min_value=16, max_value=40, value=23)
+        qualification = st.selectbox("Qualification", ["10th Pass", "12th Pass", "Graduate (Arts)", "Graduate (Science/Tech)", "Graduate (Commerce)", "Post Graduate"])
+    with col2:
+        category = st.selectbox("Category", ["General", "OBC", "SC/ST", "EWS"])
+        weakness = st.text_input("Your Weak Subject (e.g., 'English', 'Maths')")
 
-    # Check for Text
-    if user_text:
-        user_query = user_text
-
-    # 4. Generate AI Response
-    if user_query:
-        # Add User Message to State
-        st.session_state.chat_history.append({"role": "user", "content": user_query})
-        with st.chat_message("user"):
-            st.markdown(user_query)
-
-        # Generate Reply
-        with st.spinner("Thinking..." if not jeetu_mode else "Jeetu Bhaiya bol rahe hain..."):
-            final_prompt = f"{active_prompt}\n\nUSER QUERY: {user_query}"
-            response = model.generate_content(final_prompt)
-            ai_reply = response.text
+    if st.button("Find My Exams", type="primary"):
+        with st.spinner("Scanning 1670+ exams..."):
+            prompt = f"""
+            {persona_instruction}
+            User Profile: Age {age}, {qualification}, Category {category}, Weak in {weakness}.
             
-            # Add AI Message to State
-            st.session_state.chat_history.append({"role": "assistant", "content": ai_reply})
-            with st.chat_message("assistant"):
-                st.markdown(ai_reply)
+            Task:
+            1. Recommend top 3 Govt Exams they are eligible for in India (2026).
+            2. Explain WHY based on their weakness.
+            3. STRICTLY END with a sales pitch: "Start practicing for these specific exams on Govt Drish for just ₹49/month."
+            """
+            response = model.generate_content(prompt)
+            st.markdown(response.text)
+            
+            # AUDIO OUTPUT (If Jeetu Mode)
+            if jeetu_mode:
+                st.audio(text_to_speech(response.text[:500])) # Speak first 500 chars
                 
-                # PLAY AUDIO (Only if Jeetu Mode is ON)
-                if jeetu_mode:
-                    audio_bytes = text_to_speech(ai_reply[:500]) # Speak first 500 chars for speed
-                    if audio_bytes:
-                        st.audio(audio_bytes, format='audio/mp3')
+            st.success("👉 **Action:** Go to GovtDrish.com and search for these exams!")
 
-# --- TAB 2: SARTHI (PLANNER) ---
+# ==========================================
+# TOOL 2: SARTHI - STUDY PLANNER
+# ==========================================
 with tab2:
-    st.subheader("🗓️ Sarthi: Daily Planner")
-    c1, c2 = st.columns(2)
-    with c1:
-        exam = st.selectbox("Target Exam", ["UPSC CSE", "SSC CGL", "NEET UG", "Bank PO", "Railways"])
-    with c2:
-        hours = st.slider("Study Hours/Day", 2, 16, 8)
+    st.header("Sarthi: Your Personal Success Schedule")
+    st.write("Get a day-by-day plan tailored to your free time.")
     
-    if st.button("Generate Schedule"):
-        prompt = f"{active_prompt} Create a strictly timed 1-day schedule for {exam} for a student studying {hours} hours."
-        with st.spinner("Creating Plan..."):
-            res = model.generate_content(prompt)
-            st.markdown(res.text)
+    exam_name = st.text_input("Target Exam (e.g., SSC CGL 2026)")
+    days_left = st.slider("Days until Exam", 15, 180, 45)
+    hours_daily = st.slider("Hours available per day", 2, 12, 5)
+    
+    if st.button("Generate Study Plan"):
+        with st.spinner("Creating your strategy..."):
+            prompt = f"""
+            {persona_instruction}
+            Create a {days_left}-day study plan for {exam_name} assuming {hours_daily} hours of study daily.
+            
+            CRITICAL INSTRUCTION:
+            Every 3rd day, you MUST schedule a "Govt Drish Mock Test (Sectional)".
+            Every Sunday, you MUST schedule a "Govt Drish Full Mock Test".
+            
+            Output as a clean Markdown Table.
+            """
+            response = model.generate_content(prompt)
+            st.markdown(response.text)
+            
             if jeetu_mode:
                 st.audio(text_to_speech("Ye raha tumhara plan. Isse follow karna padega!"))
+                
+            st.info("💡 **Pro Tip:** Stick this on your wall. Don't miss the scheduled Mock Tests!")
 
-# --- TAB 3: CHANAKYA (ROAST) ---
+# ==========================================
+# TOOL 3: CHANAKYA - AI QUIZ
+# ==========================================
 with tab3:
-    st.subheader("🔥 Chanakya: Reality Check")
-    weakness = st.text_input("My Distraction / Weakness:", "Instagram Reels")
+    st.header("Chanakya: The 2-Minute Challenge")
+    topic = st.radio("Choose your Challenge:", ["Current Affairs (Today)", "Indian Constitution", "General Science", "English Vocab"], horizontal=True)
     
-    if st.button("Roast Me"):
-        prompt = f"You are Chanakya. The user wastes time on {weakness}. Roast them brutally in Hinglish."
-        with st.spinner("Preparing Roast..."):
-            res = model.generate_content(prompt)
-            st.error(res.text)
-            if jeetu_mode:
-                st.audio(text_to_speech(res.text))
+    if 'quiz_generated' not in st.session_state:
+        st.session_state.quiz_generated = False
+        st.session_state.quiz_content = ""
 
-# --- TAB 4: SMRITI (MEMORY) ---
+    if st.button("Generate New Quiz"):
+        with st.spinner(f"Chanakya is drafting questions on {topic}..."):
+            prompt = f"""
+            {persona_instruction}
+            Generate 3 high-quality Multiple Choice Questions on {topic}.
+            Format: 
+            Q1: [Question]
+            A) [Option]...
+            **Correct Answer:** [Ans]
+            **Explanation:** [Short Explanation]
+            
+            After the 3 questions, add a "Roast": If they couldn't answer these, tell them to buy the Govt Drish ₹49 pass.
+            """
+            response = model.generate_content(prompt)
+            st.session_state.quiz_content = response.text
+            st.session_state.quiz_generated = True
+
+    if st.session_state.quiz_generated:
+        st.markdown("---")
+        st.markdown(st.session_state.quiz_content)
+        
+        if jeetu_mode:
+            st.audio(text_to_speech("Jawab soch samajh ke dena!"))
+            
+        st.warning("⚠️ **Did you get 3/3?** If not, your competition is winning. Practice more on Govt Drish.")
+
+# ==========================================
+# TOOL 4: SMRITI - MEMORY HACKER
+# ==========================================
 with tab4:
-    st.subheader("🧠 Smriti: Memory Hacks")
-    topic = st.text_input("Topic to Memorize:", "Fundamental Rights of India")
+    st.header("Smriti: Memorize Anything in 10 Seconds")
+    st.write("Paste a hard topic, list, or dates. Get a funny trick/mnemonic.")
     
-    if st.button("Create Mnemonic"):
-        prompt = f"{active_prompt} Create a funny, easy mnemonic to remember: {topic}."
-        with st.spinner("Hacking Memory..."):
-            res = model.generate_content(prompt)
-            st.success(res.text)
+    hard_text = st.text_area("Paste text here (e.g., 'G20 Countries', 'Articles of Constitution')")
+    
+    if st.button("Hack My Memory"):
+        with st.spinner("Cooking up a trick..."):
+            prompt = f"""
+            {persona_instruction}
+            The user wants to remember this: "{hard_text}".
+            Create a funny Mnemonic (Acronym or Hinglish sentence) to help them remember it.
+            Make it weird or funny so it sticks.
+            """
+            response = model.generate_content(prompt)
+            st.markdown("### 🧠 Your Memory Trick:")
+            st.info(response.text)
+            
+            if jeetu_mode:
+                st.audio(text_to_speech(response.text))
+                
+            st.markdown("---")
+            st.caption("powered by Govt Drish AI")
