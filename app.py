@@ -3,10 +3,10 @@ import google.generativeai as genai
 import os
 from gtts import gTTS
 import io
-import random
+from streamlit_mic_recorder import mic_recorder
 
 # ---------------------------------------------------------
-# 1. SETUP & CONFIG
+# 1. SETUP & CONFIGURATION
 # ---------------------------------------------------------
 st.set_page_config(page_title="Govt Drish AI", page_icon="🇮🇳", layout="wide")
 
@@ -21,21 +21,19 @@ st.markdown("""
 
 # API KEY CHECK
 try:
-    # Look for GEMINI_API_KEY in secrets
     GENAI_API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=GENAI_API_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
-    st.error(f"⚠️ API Key Error: {e}. Check Streamlit Secrets.")
+    st.error(f"⚠️ Security Error: {e}. Check Streamlit Secrets.")
     st.stop()
 
 # ---------------------------------------------------------
 # 2. AUDIO ENGINE
 # ---------------------------------------------------------
 def text_to_speech(text):
-    """Generates audio bytes for the response"""
     try:
-        # We use Hindi 'hi' to capture the Indian accent for Hinglish
+        # 'hi' works for both Pure Hindi and Hinglish accents
         tts = gTTS(text=text, lang='hi', slow=False)
         audio_fp = io.BytesIO()
         tts.write_to_fp(audio_fp)
@@ -44,130 +42,131 @@ def text_to_speech(text):
         return None
 
 # ---------------------------------------------------------
-# 3. SIDEBAR: THE CONTROL CENTER
+# 3. SIDEBAR (CONTROLS)
 # ---------------------------------------------------------
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/9446/9446261.png", width=80)
+    st.image("https://cdn-icons-png.flaticon.com/512/9446/9446261.png", width=100)
     st.title("Govt Drish AI")
     st.caption("Discovery. Prep. Guidance.")
     
     st.markdown("---")
     
-    # THE MAGIC TOGGLE
-    st.subheader("🧠 AI Persona")
+    # THE "JEETU BHAIYA" TOGGLE
+    st.subheader("⚙️ AI Personality")
     jeetu_mode = st.toggle("🎙️ Jeetu Bhaiya Mode", value=False)
     
     if jeetu_mode:
-        st.success("✅ Jeetu Bhaiya is Online!")
-        st.info("Expect Hinglish answers & Audio support.")
+        st.success("✅ Jeetu Mode: ON (Hinglish/Casual)")
     else:
-        st.info("ℹ️ Drishya (Professional Mode) Active.")
-
-    st.markdown("---")
+        st.info("ℹ️ Drishya Mode: ON (Professional English/Hindi)")
     
+    st.markdown("---")
+
 # ---------------------------------------------------------
 # 4. SYSTEM PROMPTS (THE BRAINS)
 # ---------------------------------------------------------
 
-# DRISHYA (Professional)
-drishya_core = """
-You are Drishya, a professional AI Career Counselor for Indian government exams.
-Tone: Professional, Analytical, Encouraging.
-Language: English (unless asked for Hindi).
-Goal: Provide accurate exam data and study strategies.
+# DRISHYA (Updated to support Hindi)
+drishya_prompt = """
+ROLE: You are Drishya, a professional AI Career Counselor.
+TONE: Formal, Respectful, Concise.
+LANGUAGE RULE: 
+- If the user asks in English, reply in Professional English.
+- If the user asks in Hindi, reply in Pure, Professional Hindi (Devanagari).
+GOAL: Provide accurate exam strategy and academic advice.
 """
 
-# JEETU BHAIYA (Emotional/Hinglish)
-jeetu_core = """
-You are 'Jeetu Bhaiya', the famous mentor from Kota Factory.
-Tone: "Bhaiya" (Big Brother), Emotional, Strict but loving.
-Language: Hinglish (Mix of Hindi & English).
-Style: Use words like 'Arre bhai', 'Tension mat le', 'Samjha?', 'Fod denge'.
-Goal: Connect emotionally. If the user is stressed, motivate them. If lazy, scold them.
+# JEETU BHAIYA (Hinglish)
+jeetu_prompt = """
+ROLE: You are 'Jeetu Bhaiya', the famous mentor from Kota Factory.
+TONE: "Bade Bhaiya" (Big Brother). Emotional, strict but loving.
+LANGUAGE: Hinglish (Mix of Hindi & English).
+STYLE: Use words like 'Arre bhai', 'Tension mat le', 'Samjha?', 'Fod denge'.
+GOAL: Connect emotionally. If user is sad, motivate. If lazy, scold gently.
 """
 
-# Select the active brain
-active_prompt = jeetu_core if jeetu_mode else drishya_core
+# Select Active Brain
+current_prompt = jeetu_prompt if jeetu_mode else drishya_prompt
 
 # ---------------------------------------------------------
-# 5. UI LAYOUT
+# 5. MAIN INTERFACE (TABS)
 # ---------------------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs(["🕵️ Drishya Chat", "🗓️ Sarthi (Planner)", "🔥 Chanakya (Roast)", "🧠 Smriti (Memory)"])
+tab1, tab2, tab3, tab4 = st.tabs(["🕵️ Drishya (Mentor)", "🗓️ Sarthi (Planner)", "🔥 Chanakya (Roast)", "🧠 Smriti (Memory)"])
 
-# === TAB 1: DRISHYA CHAT (The Main Interface) ===
+# === TAB 1: DRISHYA MENTOR ===
 with tab1:
-    st.subheader("💬 Ask Drishya")
-    if jeetu_mode:
-        st.caption("🎤 Jeetu Bhaiya is listening...")
-    else:
-        st.caption("Professional Career Guidance")
-
-    # Chat History Container
+    st.header("🕵️ Drishya: AI Counselor")
+    st.caption("Ask in English or Hindi (हिंदी में पूछें)")
+    
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    # Display History
+    # Show History
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Input Area
-    user_input = st.chat_input("Type your question here...")
+    st.markdown("---")
+    
+    # HYBRID INPUT (Mic + Text)
+    col1, col2 = st.columns([1, 8])
+    with col1:
+        audio_input = mic_recorder(start_prompt="🎤", stop_prompt="⏹️", key='mic')
+    with col2:
+        text_input = st.chat_input("Ask about UPSC, SSC, NEET...")
 
-    if user_input:
-        # 1. Show User Message
-        st.session_state.chat_history.append({"role": "user", "content": user_input})
+    user_query = None
+    
+    # Handle Inputs
+    if audio_input:
+        st.info("🎤 Voice received. (Type your query for now while we enable Whisper API)")
+    
+    if text_input:
+        user_query = text_input
+
+    # AI Processing
+    if user_query:
+        st.session_state.chat_history.append({"role": "user", "content": user_query})
         with st.chat_message("user"):
-            st.markdown(user_input)
+            st.markdown(user_query)
 
-        # 2. Generate AI Response
-        with st.spinner("Thinking..." if not jeetu_mode else "Jeetu Bhaiya bol rahe hain..."):
-            final_prompt = f"{active_prompt}\n\nUSER QUERY: {user_input}"
+        with st.spinner("Thinking..."):
+            final_prompt = f"{current_prompt}\n\nUSER QUERY: {user_query}"
             response = model.generate_content(final_prompt)
-            ai_reply = response.text
-
-            # 3. Show AI Message
-            st.session_state.chat_history.append({"role": "assistant", "content": ai_reply})
+            ai_text = response.text
+            
+            st.session_state.chat_history.append({"role": "assistant", "content": ai_text})
             with st.chat_message("assistant"):
-                st.markdown(ai_reply)
+                st.markdown(ai_text)
                 
-                # 4. AUDIO (Only if Jeetu Mode is ON)
+                # Audio Autoplay (Optional: Can enable for Drishya too if desired)
                 if jeetu_mode:
-                    audio_bytes = text_to_speech(ai_reply[:500]) # Limit audio length for speed
+                    audio_bytes = text_to_speech(ai_text[:500])
                     if audio_bytes:
                         st.audio(audio_bytes, format='audio/mp3')
 
-# === TAB 2: SARTHI (Planner) ===
+# === TAB 2: SARTHI (PLANNER) ===
 with tab2:
-    st.header("🗓️ Sarthi: Study Planner")
-    col1, col2 = st.columns(2)
-    with col1:
-        exam_name = st.selectbox("Exam:", ["SSC CGL", "UPSC CSE", "NEET", "Bank PO"])
-    with col2:
-        hours = st.slider("Daily Hours:", 2, 14, 6)
-    
-    if st.button("Generate Plan"):
-        prompt = f"{active_prompt} Create a realistic 1-day schedule for {exam_name} for a student studying {hours} hours."
+    st.header("🗓️ Sarthi: The Planner")
+    exam = st.text_input("Target Exam:", "SSC CGL")
+    if st.button("Make Plan"):
+        # Sarthi will also respect the "Hindi" rule if typed in Hindi
+        prompt = f"{current_prompt} Create a study plan for {exam}."
         res = model.generate_content(prompt)
         st.markdown(res.text)
 
-# === TAB 3: CHANAKYA (Roast Mode) ===
+# === TAB 3: CHANAKYA (ROAST) ===
 with tab3:
-    st.header("🔥 Chanakya: The Reality Check")
-    distraction = st.text_input("My biggest distraction is:", "Instagram Reels")
-    if st.button("Roast Me"):
-        roast_prompt = f"You are Chanakya. The user is wasting time on {distraction}. Roast them brutally in Hinglish."
-        res = model.generate_content(roast_prompt)
+    st.header("🔥 Chanakya: Roast Mode")
+    distraction = st.text_input("Distraction:", "Reels")
+    if st.button("Roast"):
+        res = model.generate_content(f"You are Chanakya. Roast user for: {distraction}")
         st.error(res.text)
-        if jeetu_mode:
-             audio = text_to_speech(res.text)
-             st.audio(audio)
 
-# === TAB 4: SMRITI (Memory Hacks) ===
+# === TAB 4: SMRITI (MEMORY) ===
 with tab4:
-    st.header("🧠 Smriti: Mnemonic Generator")
-    topic = st.text_input("Topic to remember (e.g., Mughal Emperors):")
-    if st.button("Create Hack"):
-        hack_prompt = f"{active_prompt} Create a funny mnemonic/trick to remember: {topic}."
-        res = model.generate_content(hack_prompt)
+    st.header("🧠 Smriti: Memory Hacks")
+    topic = st.text_input("Topic:", "Periodic Table")
+    if st.button("Generate Hack"):
+        res = model.generate_content(f"{current_prompt} Mnemonic for: {topic}")
         st.success(res.text)
